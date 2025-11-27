@@ -2,18 +2,26 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 
 var(
+	APP_NAME = "Jibon বদমাশ"
 	WINDOW_WIDTH int32 = 800
 	WINDOW_HEIGHT int32 = 600
 	DELAY uint32 = 16
 
+
+	// app instances
 	running bool = true
+	padding = 10
+
 )
+
+
 
 
 
@@ -24,11 +32,23 @@ func main() {
 	}
 	defer sdl.Quit()
 
-	window,  err := sdl.CreateWindow("Text-Editor", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, WINDOW_WIDTH, WINDOW_HEIGHT, sdl.WINDOW_SHOWN)
+	window,  err := sdl.CreateWindow(APP_NAME, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, WINDOW_WIDTH, WINDOW_HEIGHT, sdl.WINDOW_SHOWN)
 	if err != nil {
 		panic(err)
 	}
 	defer window.Destroy()
+
+	renderer, err := sdl.CreateRenderer(window, -1, sdl.RENDERER_ACCELERATED)
+
+	if err != nil{
+		fmt.Fprintf(os.Stderr, "Failed to create renderer: %s\n", err)
+		os.Exit(1)
+	}
+	defer renderer.Destroy()
+
+
+	sdl.StartTextInput()
+	defer sdl.StopTextInput()
  
 	for running {
 
@@ -40,7 +60,7 @@ func main() {
 			case *sdl.KeyboardEvent:
 				keyEvent := event.(*sdl.KeyboardEvent)
 				if keyEvent.Type == sdl.KEYDOWN {
-					fmt.Printf("Key pressed: %s\n", keyEvent.Keysym.Sym)
+					fmt.Printf("Key pressed: %v\n", keyEvent.Keysym.Sym)
 					if keyEvent.Keysym.Sym == sdl.K_ESCAPE {
 						running = false
 					}
@@ -54,6 +74,12 @@ func main() {
 			
 			
 		}
+
+
+		renderer.SetDrawColor(255, 255, 255, 255)
+		renderer.Clear()
+		
+		renderer.Present()
 
 
 
