@@ -1,12 +1,18 @@
 package main
 
-import "github.com/veandco/go-sdl2/sdl"
+import (
+	"fmt"
+
+	"github.com/veandco/go-sdl2/sdl"
+)
 
 
 var(
 	WINDOW_WIDTH int32 = 800
 	WINDOW_HEIGHT int32 = 600
 	DELAY uint32 = 16
+
+	running bool = true
 )
 
 
@@ -23,16 +29,36 @@ func main() {
 		panic(err)
 	}
 	defer window.Destroy()
-
-
-	
-
-	running := true 
+ 
 	for running {
+
+		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+			switch event.(type) {
+			case *sdl.QuitEvent:
+				fmt.Println("Quiting event received. exiting...")
+				running = false
+			case *sdl.KeyboardEvent:
+				keyEvent := event.(*sdl.KeyboardEvent)
+				if keyEvent.Type == sdl.KEYDOWN {
+					fmt.Printf("Key pressed: %s\n", keyEvent.Keysym.Sym)
+					if keyEvent.Keysym.Sym == sdl.K_ESCAPE {
+						running = false
+					}
+				}
+			case *sdl.MouseButtonEvent:
+				mouseEvent := event.(*sdl.MouseButtonEvent)
+				if mouseEvent.Type == sdl.MOUSEBUTTONDOWN {
+					fmt.Printf("Mouse button clicked at (%d, %d)\n", mouseEvent.X, mouseEvent.Y)
+				}
+			}
+			
+			
+		}
 
 
 
 		sdl.Delay(DELAY)
+		
 		
 	}
 }
