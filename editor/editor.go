@@ -2,7 +2,9 @@ package editor
 
 import (
     "fmt"
-    // "os"
+    "os"
+    "strings"
+
     "github.com/veandco/go-sdl2/sdl"
     "github.com/veandco/go-sdl2/ttf"
 )
@@ -32,8 +34,10 @@ type Editor struct {
     lastBlink     uint32
     Running       bool
 
-    scrollOffset     int
-    maxVisibleLines  int
+    scrollOffset    int
+    maxVisibleLines int
+
+    currentFile string // Track current file
 }
 
 func NewEditor(font *ttf.Font) *Editor {
@@ -45,6 +49,7 @@ func NewEditor(font *ttf.Font) *Editor {
         Running:       true,
         cursorVisible: true,
         lastBlink:     uint32(sdl.GetTicks64()),
+        currentFile:   "",
     }
 
     e.charWidth, e.charHeight = e.measureChar()
@@ -57,9 +62,6 @@ func (e *Editor) measureChar() (w, h int) {
     return w, h + 5
 }
 
-// -----------------------------
-// EVENT HANDLING (SCROLL + KEYS)
-// -----------------------------
 func (e *Editor) HandleEvent(event sdl.Event) {
     switch ev := event.(type) {
 
@@ -116,6 +118,40 @@ func (e *Editor) HandleEvent(event sdl.Event) {
 
             case sdl.K_END:
                 e.cursorX = len(e.lines[e.cursorY])
+
+            case sdl.K_o:
+                if ev.Keysym.Mod&sdl.KMOD_CTRL != 0 {
+                    fmt.Print("Enter file path to open: ")
+                    var filePath string
+                    fmt.Scanln(&filePath)
+                    if filePath != "" {
+                        fmt.Println("Loading", filePath, "...")
+                        if err := e.LoadFromFile(filePath); err != nil {
+                            fmt.Println("Error loading file:", err)
+                        } else {
+                            fmt.Println("File loaded successfully")
+                        }
+                    }
+                }
+
+            case sdl.K_s:
+                if ev.Keysym.Mod&sdl.KMOD_CTRL != 0 {
+                    if e.currentFile != "" {
+                        fmt.Println("Saving", e.currentFile, "...")
+                        if err := e.SaveToFile(e.currentFile); err != nil {
+                            fmt.Println("Error saving file:", err)
+                        } else {
+                            fmt.Println("File saved successfully")
+                        }
+                    } else {
+                        fmt.Println("No file loaded. Use Ctrl+O to open a file first.")
+                    }
+                }
+
+            case sdl.K_TAB:
+                for i := 0; i < TAB_SIZE; i++ {
+                    e.insertRune(' ')
+                }
             }
         }
 
@@ -126,9 +162,6 @@ func (e *Editor) HandleEvent(event sdl.Event) {
     }
 }
 
-// -----------------------------
-// SCROLL SUPPORT
-// -----------------------------
 func (e *Editor) scrollUp() {
     if e.scrollOffset > 0 {
         e.scrollOffset--
@@ -141,9 +174,6 @@ func (e *Editor) scrollDown() {
     }
 }
 
-// -----------------------------
-// TEXT EDITING FUNCTIONS
-// -----------------------------
 func (e *Editor) insertRune(r rune) {
     line := e.lines[e.cursorY]
     newLine := make([]rune, len(line)+1)
@@ -166,6 +196,7 @@ func (e *Editor) insertNewline() {
     e.lines = append(e.lines[:e.cursorY+1], append([][]rune{right}, e.lines[e.cursorY+1:]...)...)
     e.cursorY++
     e.cursorX = 0
+    e.ensureCursorVisible()
     e.resetBlink()
 }
 
@@ -180,6 +211,7 @@ func (e *Editor) backspace() {
         e.lines = append(e.lines[:e.cursorY], e.lines[e.cursorY+1:]...)
         e.cursorY--
         e.cursorX = prevLen
+        e.ensureCursorVisible()
     }
     e.resetBlink()
 }
@@ -195,9 +227,6 @@ func (e *Editor) delete() {
     e.resetBlink()
 }
 
-// -----------------------------
-// CURSOR MOVEMENT
-// -----------------------------
 func (e *Editor) moveCursorLeft(word bool) {
     if word {
         for e.cursorX > 0 && e.lines[e.cursorY][e.cursorX-1] == ' ' {
@@ -211,6 +240,7 @@ func (e *Editor) moveCursorLeft(word bool) {
     } else if e.cursorY > 0 {
         e.cursorY--
         e.cursorX = len(e.lines[e.cursorY])
+        e.ensureCursorVisible()
     }
     e.resetBlink()
 }
@@ -229,6 +259,7 @@ func (e *Editor) moveCursorRight(word bool) {
     } else if e.cursorY < len(e.lines)-1 {
         e.cursorY++
         e.cursorX = 0
+        e.ensureCursorVisible()
     }
     e.resetBlink()
 }
@@ -263,9 +294,6 @@ func (e *Editor) ensureCursorVisible() {
     }
 }
 
-// -----------------------------
-// RENDERING (TEXT + LINE NUMBERS)
-// -----------------------------
 func (e *Editor) resetBlink() {
     e.cursorVisible = true
     e.lastBlink = uint32(sdl.GetTicks64())
@@ -330,4 +358,52 @@ func (e *Editor) Render(renderer *sdl.Renderer) {
     }
 
     renderer.Present()
+}
+
+func (e *Editor) LoadFromFile(path string) error {
+    data, err := os.ReadFile(path)
+    if err != nil {
+        return err
+    }
+
+    // Split file into lines
+    rawLines := strings.Split(string(data), "\n")
+
+    e.lines = make([][]rune, len(rawLines))
+    for i, line := range rawLines {
+        e.lines[i] = []rune(line)
+    }
+
+    // Ensure at least one empty line
+    if len(e.lines) == 0 {
+        e.lines = [][]rune{{}}
+    }
+
+    // Reset cursor & scroll
+    e.cursorX = 0
+    e.cursorY = 0
+    e.scrollOffset = 0
+    e.currentFile = path
+
+    e.resetBlink()
+
+    return nil
+}
+
+func (e *Editor) SaveToFile(path string) error {
+    var builder strings.Builder
+
+    for i, line := range e.lines {
+        builder.WriteString(string(line))
+        if i < len(e.lines)-1 {
+            builder.WriteRune('\n')
+        }
+    }
+
+    err := os.WriteFile(path, []byte(builder.String()), 0644)
+    if err != nil {
+        return err
+    }
+
+    return nil
 }

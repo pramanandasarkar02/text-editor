@@ -6,7 +6,7 @@ def generate_word(word_length = 5):
     
 def generate_line(word_count= 12):
     words = [ generate_word() for _ in range(word_count)] 
-    words.append("/n")
+    words.append("\n")
     return " ".join(words)
 
 def generate_paragraph(line_count, fileName):
