@@ -1,86 +1,259 @@
 package editor
 
+
 import (
 	"fmt"
-	"math"
-
+	"os"
 	"github.com/veandco/go-sdl2/sdl"
 	"github.com/veandco/go-sdl2/ttf"
 )
 
-var (
-	APP_NAME       = "Jibon বদমাশ"
-	WINDOW_WIDTH   int32 = 800
-	WINDOW_HEIGHT  int32 = 600
-	DELAY          uint32 = 16
-	FONTSIZE       uint32 = 20
-	PADDING_X      uint32 = 10
-	PADDING_Y      uint32 = 5
-	LINE_NUMBER_LEN uint32 = 40
-	SCROLL_LEN     uint32 = 8
-	INTER_LINE_SPACE uint32 = 12
-	RUNNING        bool = true
-	IS_SHOW_LINE_NUMBER = true
+// Constants
+const (
+	FONT_SIZE     = 20
+	TAB_SIZE      = 4
+	CURSOR_BLINK  = 500 // ms
+	WINDOW_WIDTH  = 1000
+	WINDOW_HEIGHT = 700
+	BG_COLOR      = 30
+	TEXT_COLOR    = 220
+	CURSOR_COLOR  = 255
 )
 
-func DrawFrame(renderer *sdl.Renderer, font *ttf.Font) {
+type Editor struct {
+	lines          [][]rune       // 2D array of runes (each line)
+	cursorX, cursorY int          // Cursor position in characters
+	        
+	font           *ttf.Font
+	charWidth      int
+	charHeight     int
+	cursorVisible  bool
+	lastBlink      uint32
+	Running        bool
+}
 
-	// background
-	renderer.SetDrawColor(0, 0, 0, 255)
+func NewEditor(font *ttf.Font) *Editor {
+	e := &Editor{
+		lines:         [][]rune{[]rune{}},
+		cursorX:       0,
+		cursorY:       0,
+		font:          font,
+		Running:       true,
+		cursorVisible: true,
+		lastBlink:     uint32(sdl.GetTicks64()),
+	}
+	e.charWidth, e.charHeight = e.measureChar()
+	e.lines = append(e.lines, []rune{}) // Start with one empty line
+	return e
+}
+
+func (e *Editor) measureChar() (w, h int) {
+	w, h, _ = e.font.SizeUTF8("M")
+	return w, h + 5 // little line spacing
+}
+
+func (e *Editor) HandleEvent(event sdl.Event) {
+	switch ev := event.(type) {
+	case *sdl.QuitEvent:
+		e.Running = false
+
+	case *sdl.KeyboardEvent:
+		if ev.Type == sdl.KEYDOWN {
+			switch ev.Keysym.Sym {
+			case sdl.K_ESCAPE:
+				e.Running = false
+			case sdl.K_RETURN:
+				e.insertNewline()
+			case sdl.K_BACKSPACE:
+				e.backspace()
+			case sdl.K_DELETE:
+				e.delete()
+			case sdl.K_LEFT:
+				e.moveCursorLeft(ev.Keysym.Mod&sdl.KMOD_CTRL != 0)
+			case sdl.K_RIGHT:
+				e.moveCursorRight(ev.Keysym.Mod&sdl.KMOD_CTRL != 0)
+			case sdl.K_UP:
+				e.moveCursorUp()
+			case sdl.K_DOWN:
+				e.moveCursorDown()
+			case sdl.K_HOME:
+				e.cursorX = 0
+			case sdl.K_END:
+				e.cursorX = len(e.lines[e.cursorY])
+			}
+		}
+
+	case *sdl.TextInputEvent:
+		text := ev.GetText()
+		for _, r := range text {
+			e.insertRune(r)
+		}
+	}
+}
+
+func (e *Editor) insertRune(r rune) {
+	line := e.lines[e.cursorY]
+	newLine := make([]rune, len(line)+1)
+	copy(newLine[:e.cursorX], line[:e.cursorX])
+	newLine[e.cursorX] = r
+	copy(newLine[e.cursorX+1:], line[e.cursorX:])
+	e.lines[e.cursorY] = newLine
+	e.cursorX++
+	e.resetBlink()
+}
+
+func (e *Editor) insertNewline() {
+	current := e.lines[e.cursorY]
+	left := current[:e.cursorX]
+	right := current[e.cursorX:]
+
+	e.lines[e.cursorY] = left
+	e.lines = append(e.lines[:e.cursorY+1], append([][]rune{right}, e.lines[e.cursorY+1:]...)...)
+	e.cursorY++
+	e.cursorX = 0
+	e.resetBlink()
+}
+
+func (e *Editor) backspace() {
+	if e.cursorX > 0 {
+		line := e.lines[e.cursorY]
+		newLine := append(line[:e.cursorX-1], line[e.cursorX:]...)
+		e.lines[e.cursorY] = newLine
+		e.cursorX--
+	} else if e.cursorY > 0 {
+		// Join with previous line
+		prevLen := len(e.lines[e.cursorY-1])
+		e.lines[e.cursorY-1] = append(e.lines[e.cursorY-1], e.lines[e.cursorY]...)
+		e.lines = append(e.lines[:e.cursorY], e.lines[e.cursorY+1:]...)
+		e.cursorY--
+		e.cursorX = prevLen
+	}
+	e.resetBlink()
+}
+
+func (e *Editor) delete() {
+	if e.cursorX < len(e.lines[e.cursorY]) {
+		line := e.lines[e.cursorY]
+		newLine := append(line[:e.cursorX], line[e.cursorX+1:]...)
+		e.lines[e.cursorY] = newLine
+	} else if e.cursorY < len(e.lines)-1 {
+		e.lines[e.cursorY] = append(e.lines[e.cursorY], e.lines[e.cursorY+1]...)
+		e.lines = append(e.lines[:e.cursorY+1], e.lines[e.cursorY+2:]...)
+	}
+	e.resetBlink()
+}
+
+func (e *Editor) moveCursorLeft(word bool) {
+	if word {
+		for e.cursorX > 0 {
+			e.cursorX--
+			if e.cursorX > 0 && e.lines[e.cursorY][e.cursorX-1] == ' ' {
+				break
+			}
+		}
+		for e.cursorX > 0 && e.lines[e.cursorY][e.cursorX-1] != ' ' {
+			e.cursorX--
+		}
+	} else if e.cursorX > 0 {
+		e.cursorX--
+	} else if e.cursorY > 0 {
+		e.cursorY--
+		e.cursorX = len(e.lines[e.cursorY])
+	}
+	e.resetBlink()
+}
+
+func (e *Editor) moveCursorRight(word bool) {
+	lineLen := len(e.lines[e.cursorY])
+	if word {
+		for e.cursorX < lineLen && e.lines[e.cursorY][e.cursorX] == ' ' {
+			e.cursorX++
+		}
+		for e.cursorX < lineLen && e.lines[e.cursorY][e.cursorX] != ' ' {
+			e.cursorX++
+		}
+	} else if e.cursorX < lineLen {
+		e.cursorX++
+	} else if e.cursorY < len(e.lines)-1 {
+		e.cursorY++
+		e.cursorX = 0
+	}
+	e.resetBlink()
+}
+
+func (e *Editor) moveCursorUp() {
+	if e.cursorY > 0 {
+		e.cursorY--
+		if e.cursorX > len(e.lines[e.cursorY]) {
+			e.cursorX = len(e.lines[e.cursorY])
+		}
+	}
+	e.resetBlink()
+}
+
+func (e *Editor) moveCursorDown() {
+	if e.cursorY < len(e.lines)-1 {
+		e.cursorY++
+		if e.cursorX > len(e.lines[e.cursorY]) {
+			e.cursorX = len(e.lines[e.cursorY])
+		}
+	}
+	e.resetBlink()
+}
+
+func (e *Editor) resetBlink() {
+	e.cursorVisible = true
+	e.lastBlink = uint32(sdl.GetTicks64())
+}
+
+func (e *Editor) UpdateBlink() {
+	now := uint32(sdl.GetTicks64())
+	if now-e.lastBlink > CURSOR_BLINK {
+		e.cursorVisible = !e.cursorVisible
+		e.lastBlink = now
+	}
+}
+
+func (e *Editor) Render(renderer *sdl.Renderer) {
+	renderer.SetDrawColor(BG_COLOR, BG_COLOR, BG_COLOR, 255)
 	renderer.Clear()
 
-	// draw line numbers
-	if IS_SHOW_LINE_NUMBER {
+	x := int32(10)
+	y := int32(10)
 
-		// how many lines can fit?
-		lineCount := uint32(math.Floor(float64(WINDOW_HEIGHT) /
-			(float64(FONTSIZE) + float64(INTER_LINE_SPACE))))
+	renderer.SetDrawColor(TEXT_COLOR, TEXT_COLOR, TEXT_COLOR, 255)
 
-		for i := uint32(0); i < lineCount; i++ {
+	for row := 0; row < len(e.lines); row++ {
+		line := e.lines[row]
+		lineStr := string(line)
 
-			y := int32(i*(FONTSIZE+INTER_LINE_SPACE) + PADDING_Y)
+		if lineStr != "" {
+			surface, err := e.font.RenderUTF8Solid(lineStr, sdl.Color{R: TEXT_COLOR, G: TEXT_COLOR, B: TEXT_COLOR, A: 255})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to render text: %v\n", err)
+				continue
+			}
+			defer surface.Free()
 
-			// background bar
-			renderer.SetDrawColor(40, 40, 40, 255)
-			renderer.FillRect(&sdl.Rect{
-				X: int32(PADDING_X),
-				Y: y,
-				W: int32(LINE_NUMBER_LEN),
-				H: int32(FONTSIZE + INTER_LINE_SPACE),
-			})
+			texture, err := renderer.CreateTextureFromSurface(surface)
+			if err != nil {
+				continue
+			}
+			defer texture.Destroy()
 
-			// centered text inside bar
-			DrawText(renderer, font,
-				int32(PADDING_X+5),
-				y,
-				fmt.Sprintf("%d", i+1),
-				200, 200, 200)
+			_, _, w, h, _ := texture.Query()
+			renderer.Copy(texture, nil, &sdl.Rect{X: x, Y: y, W: w, H: h})
 		}
+
+		// Draw cursor if on this line
+		if row == e.cursorY && e.cursorVisible {
+			cursorX := x + int32(e.cursorX*e.charWidth)
+			renderer.SetDrawColor(CURSOR_COLOR, CURSOR_COLOR, CURSOR_COLOR, 255)
+			renderer.FillRect(&sdl.Rect{X: cursorX, Y: y, W: 2, H: int32(e.charHeight - 5)})
+		}
+
+		y += int32(e.charHeight)
 	}
 
 	renderer.Present()
-}
-
-func DrawText(renderer *sdl.Renderer, font *ttf.Font,
-	x, y int32, text string, r, g, b byte) {
-
-	surface, err := font.RenderUTF8Blended(text,
-		sdl.Color{R: r, G: g, B: b, A: 255})
-	if err != nil {
-		panic(err)
-	}
-	defer surface.Free()
-
-	texture, err := renderer.CreateTextureFromSurface(surface)
-	if err != nil {
-		panic(err)
-	}
-	defer texture.Destroy()
-
-	renderer.Copy(texture, nil, &sdl.Rect{
-		X: x,
-		Y: y,
-		W: surface.W,
-		H: surface.H,
-	})
 }
