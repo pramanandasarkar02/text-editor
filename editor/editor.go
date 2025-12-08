@@ -114,10 +114,26 @@ func (e *Editor) HandleEvent(event sdl.Event) {
                 e.moveCursorDown()
 
             case sdl.K_HOME:
-                e.cursorX = 0
+                if ev.Keysym.Mod&sdl.KMOD_CTRL != 0 {
+                    // Ctrl+Home: Go to first line
+                    e.cursorY = 0
+                    e.cursorX = 0
+                    e.scrollOffset = 0
+                } else {
+                    // Home: Go to start of current line
+                    e.cursorX = 0
+                }
 
             case sdl.K_END:
-                e.cursorX = len(e.lines[e.cursorY])
+                if ev.Keysym.Mod&sdl.KMOD_CTRL != 0 {
+                    // Ctrl+End: Go to last line
+                    e.cursorY = len(e.lines) - 1
+                    e.cursorX = len(e.lines[e.cursorY])
+                    e.ensureCursorVisible()
+                } else {
+                    // End: Go to end of current line
+                    e.cursorX = len(e.lines[e.cursorY])
+                }
 
             case sdl.K_o:
                 if ev.Keysym.Mod&sdl.KMOD_CTRL != 0 {

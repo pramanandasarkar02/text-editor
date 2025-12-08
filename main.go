@@ -11,7 +11,7 @@ import (
 const (
 	FONT_SIZE     = 12
 	TAB_SIZE      = 4
-	CURSOR_BLINK  = 500 // ms
+	CURSOR_BLINK  = 500 
 	WINDOW_WIDTH  = 800
 	WINDOW_HEIGHT = 600
 	BG_COLOR      = 0
