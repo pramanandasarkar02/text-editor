@@ -17,6 +17,8 @@ def generate_paragraph(line_count, fileName):
 
 if __name__ == "__main__":
     fileNames = [("small.txt", 100), ("medium.txt", 1000), ("large.txt", 100000), ("xl.txt", 1000000), ("xll.txt", 10000000), ("xlll.txt", 100000000)] 
+    # fileNames = [("5.txt", 50000000), ("2.txt", 20000000)] 
+    # fileNames = [("xll.txt", 10000000)] 
 
     for fileName, line_count in fileNames:
         dir = "text"
