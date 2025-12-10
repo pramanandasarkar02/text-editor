@@ -1,8 +1,7 @@
 package main
 
 import (
-	"pramanandasarkar02/text-editor/editor"
-
+	"pramanandasarkar02/text-editor/rope-editor"
 	"github.com/veandco/go-sdl2/sdl"
 	"github.com/veandco/go-sdl2/ttf"
 )
@@ -10,13 +9,8 @@ import (
 // Constants
 const (
 	FONT_SIZE     = 12
-	TAB_SIZE      = 4
-	CURSOR_BLINK  = 500 
 	WINDOW_WIDTH  = 800
 	WINDOW_HEIGHT = 600
-	BG_COLOR      = 0
-	TEXT_COLOR    = 200
-	CURSOR_COLOR  = 255
 )
 
 
