@@ -152,15 +152,19 @@ func (e *Editor) HandleEvent(event sdl.Event) {
 
             case sdl.K_s:
                 if ev.Keysym.Mod&sdl.KMOD_CTRL != 0 {
-                    if e.currentFile != "" {
-                        fmt.Println("Saving", e.currentFile, "...")
-                        if err := e.SaveToFile(e.currentFile); err != nil {
-                            fmt.Println("Error saving file:", err)
-                        } else {
-                            fmt.Println("File saved successfully")
-                        }
+                    filePath := e.currentFile
+                    if filePath == "" {
+                        filePath = "demo.txt"
+                        e.currentFile = filePath
+                        fmt.Println("No file loaded. Saving to default:", filePath)
                     } else {
-                        fmt.Println("No file loaded. Use Ctrl+O to open a file first.")
+                        fmt.Println("Saving", filePath, "...")
+                    }
+                    
+                    if err := e.SaveToFile(filePath); err != nil {
+                        fmt.Println("Error saving file:", err)
+                    } else {
+                        fmt.Println("File saved successfully to", filePath)
                     }
                 }
 
